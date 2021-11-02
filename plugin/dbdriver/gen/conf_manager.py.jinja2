@@ -1,0 +1,269 @@
+import functools
+import importlib
+import traceback
+
+from ray_{{ namespace }}.gen.sqlite.DBDriver import DBManager
+from ray_{{ namespace }}.gen.common.utils import CamelCase
+from ray_{{ namespace }}.gen.mo import resource_object
+from ray_{{ namespace }}.gen.mo.resource_object import all_resource_types, all_rpc_types
+
+class ConfigManager(object):
+
+    def __new__(cls, *args, **kwargs):
+        obj = super(ConfigManager, cls).__new__(cls, *args, **kwargs)
+
+        cls._generate_resource_crud_methods(obj)
+        cls._generate_resource_rpc_methods(obj)
+        return obj
+
+    def __init__(self):
+        self._resource_classes = {}
+        self._resource_types = all_resource_types
+
+        for resource_type in all_resource_types:
+            r_class_name = resource_type
+            try:
+                r_class = getattr(resource_object, r_class_name)
+            except AttributeError:
+                raise
+            self.set_resource_class(resource_type, r_class)
+
+        self._extension_mgrs = {}
+        #init extension
+        try:
+            resource_module = importlib.import_module("ray_{{ namespace }}.{{ namespace }}_resource_extension")
+            class_name = '{}Extension'.format(CamelCase("{{ namespace }}"))
+            plugin_obj = getattr(resource_module, class_name)()
+            self._extension_mgrs['resourceApi'] = plugin_obj
+        except ImportError as ex:
+            pass
+
+    @classmethod
+    def _generate_resource_crud_methods(cls, obj):
+        for resource_type in all_resource_types:
+            obj_type = resource_type.replace('-', '_').lower()
+            create_method = functools.partial(obj.resource_create, resource_type)
+            functools.update_wrapper(create_method, obj.resource_create)
+            setattr(obj, '%s_create' %(obj_type), create_method)
+
+            read_method = functools.partial(obj.resource_read,resource_type)
+            functools.update_wrapper(read_method, obj.resource_read)
+            setattr(obj, '%s_read' %(obj_type), read_method)
+
+            update_method = functools.partial(obj.resource_update, resource_type)
+            functools.update_wrapper(update_method, obj.resource_update)
+            setattr(obj, '%s_update' %(obj_type), update_method)
+
+            delete_method = functools.partial(obj.resource_delete, resource_type)
+            functools.update_wrapper(delete_method, obj.resource_delete)
+            setattr(obj, '%s_delete' %(obj_type), delete_method)
+
+            list_method = functools.partial(obj.resource_list, resource_type)
+            functools.update_wrapper(list_method, obj.resource_list)
+            setattr(obj, '%s_list' %(obj_type), list_method)
+
+    @classmethod
+    def _generate_resource_rpc_methods(cls, obj):
+        for rpc_name in all_rpc_types:
+            rpc_meta = all_rpc_types.get(rpc_name)
+            rpc_method = functools.partial(obj.resource_rpc, rpc_name, rpc_meta)
+            functools.update_wrapper(rpc_method, obj.resource_rpc)
+            setattr(obj, '%s' %(rpc_name), rpc_method)
+
+    def set_resource_class(self, resource_type, resource_class):
+        obj_type = resource_type.replace('-', '_').lower()
+        resource_class.cm = self
+        self._resource_classes[obj_type]  = resource_class
+
+    def get_resource_class(self, resource_type):
+        obj_type = resource_type.replace('-', '_').lower()
+        if obj_type in self._resource_classes:
+            return self._resource_classes[obj_type]
+
+    def resource_create(self, resource_type, obj_dict):
+
+        obj_type = resource_type.replace('-', '_').lower()
+        r_class = self.get_resource_class(resource_type)
+        obj = r_class.from_dict(**obj_dict)
+        ret_obj = None
+        pre_ret = None
+
+        dm = DBManager()
+        ctx = dm.create_ctx()
+
+        try:
+            pre_func = 'pre_'+obj_type.replace('-', '_')+'_create'
+            pre_ret = getattr(self._extension_mgrs['resourceApi'], pre_func)(self, ctx, obj)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        if pre_ret is not None and 'result' in pre_ret:
+            return pre_ret.get('result')
+
+        obj_dict = dm.create_resource(ret_obj, resource_type, obj.to_dict())
+
+        if obj_dict:
+            ret_obj = r_class.from_dict(**obj_dict)
+
+        try:
+            post_func = 'post_'+obj_type.replace('-', '_')+'_create'
+            getattr(self._extension_mgrs['resourceApi'], post_func)(self, ctx, ret_obj)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        return ret_obj
+
+    def resource_read(self, resource_type, id):
+
+        obj_type = resource_type.replace('-', '_').lower()
+        r_class = self.get_resource_class(resource_type)
+        ret_obj = None
+        pre_ret = None
+
+        dm = DBManager()
+        ctx = dm.create_ctx()
+
+        try:
+            pre_func = 'pre_'+obj_type.replace('-', '_')+'_read'
+            pre_ret = getattr(self._extension_mgrs['resourceApi'], pre_func)(self, ctx, id)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        if pre_ret is not None and 'result' in pre_ret:
+            return pre_ret.get('result')
+
+        obj_dict = dm.read_resource(ctx, resource_type, id)
+
+        if obj_dict:
+            ret_obj = r_class.from_dict(**obj_dict)
+
+        try:
+            post_func = 'post_'+obj_type.replace('-', '_')+'_read'
+            getattr(self._extension_mgrs['resourceApi'], post_func)(self, ctx, id, ret_obj)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        return ret_obj
+
+    def resource_update(self, resource_type, obj_dict):
+
+        obj_type = resource_type.replace('-', '_').lower()
+        r_class = self.get_resource_class(resource_type)
+        obj = r_class.from_dict(**obj_dict)
+        ret_obj = None
+        pre_ret = None
+
+        dm = DBManager()
+        ctx = dm.create_ctx()
+
+        try:
+            pre_func = 'pre_'+obj_type.replace('-', '_')+'_update'
+            pre_ret = getattr(self._extension_mgrs['resourceApi'], pre_func)(self, ctx, obj)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        if pre_ret is not None and 'result' in pre_ret:
+            return pre_ret.get('result')
+
+        res_obj = dm.update_resource(ctx, resource_type, obj.to_dict())
+        if res_obj:
+            ret_obj = r_class.from_dict(**res_obj)
+
+        try:
+            post_func = 'post_'+obj_type.replace('-', '_')+'_update'
+            getattr(self._extension_mgrs['resourceApi'], post_func)(self, ctx, obj)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        return ret_obj
+
+    def resource_delete(self, resource_type, id):
+
+        obj_type = resource_type.replace('-', '_').lower()
+        r_class = self.get_resource_class(resource_type)
+        ret_obj = None
+        pre_ret = None
+
+        dm = DBManager()
+        ctx = dm.create_ctx()
+
+        try:
+            pre_func = 'pre_'+obj_type.replace('-', '_')+'_delete'
+            pre_ret = getattr(self._extension_mgrs['resourceApi'], pre_func)(self, ctx, id)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        if pre_ret is not None and 'result' in pre_ret:
+            return pre_ret.get('result')
+
+        obj_dict = dm.delete_resource(ctx, resource_type, id)
+
+        if obj_dict:
+            ret_obj = r_class.from_dict(**obj_dict)
+
+        try:
+            post_func = 'post_'+obj_type.replace('-', '_')+'_delete'
+            getattr(self._extension_mgrs['resourceApi'], post_func)(self, ctx, id, ret_obj)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise
+
+        return ret_obj
+
+    def resource_list(self, resource_type, **kwargs):
+
+        obj_type = resource_type.replace('-', '_').lower()
+        r_class = self.get_resource_class(resource_type)
+
+        dm = DBManager()
+        obj_list = dm.list_resource(None, resource_type, **kwargs)
+
+        if obj_list:
+            obj_ret = [r_class.from_dict(**obj_dict) for obj_dict in obj_list]
+            return obj_ret
+
+        return None
+
+    def resource_rpc(self, rpc_name, rpc_meta, **kwargs):
+        dm = DBManager()
+        ctx = dm.create_ctx()
+
+        try:
+            getattr(self._extension_mgrs['resourceApi'], rpc_name)(self, ctx, **kwargs)
+        except KeyError as ex:
+            # lack of registered extension leads to Exception
+            if 'resourceApi' in str(ex):
+                pass
+            else:
+                raise

@@ -1,0 +1,143 @@
+{#- BEGIN MACRO DEFINITION #}
+{%- macro generate_rpc(rpc_name, rpc) %}
+{%- set c_content = {'rpc': '', 'rpc_cm': ''} %}
+{%- if rpc.input %}
+  {%- for i in rpc.input %}
+    {%- do c_content.update({'rpc': c_content['rpc'] + ', ' + i + '=None'}) %}
+    {%- do c_content.update({'rpc_cm': c_content['rpc_cm'] + ', ' + i + '=' + i}) %}
+  {%- endfor %}
+  {%- do c_content.update({'rpc_cm': c_content['rpc_cm'][1:]}) %}
+{%- endif %}
+  def {{ rpc_name }}(self{{ c_content['rpc'] }}):
+      """ {{ rpc.description }} """
+      return self.cm.{{ rpc.resource_type | lower }}_{{ rpc_name }}({{ c_content['rpc_cm'] }})
+
+{%- endmacro %}
+{#- END MACRO DEFINITION #}
+
+import fire
+import os,sys,inspect
+from ray_{{ namespace }}.gen.conf_manager import ConfigManager
+from ray_{{ namespace }}.gen.common.utils import PrintObjets, CamelCase, PrintException
+
+class {{ obj }}(object):
+  """ CLI for {{ obj }} ."""
+
+  {%- set c_content = {'create': '', 'headers':'', 'order':''} %}
+  {%- for attr in objects[obj] %}
+      {%- if attr != 'id' %}
+      {%- do c_content.update({'create': c_content['create'] + ', ' + attr + '=None'}) %}
+      {%- do c_content.update({'headers': c_content['headers'] + ', CamelCase("' + attr + '")'}) %}
+      {%- do c_content.update({'order': c_content['order'] + ', "' + attr + '"'}) %}
+      {%- endif %}
+  {%- endfor %}
+
+  def __init__(self):
+      self.cm = ConfigManager()
+      self.headers=["ID"{{ c_content['headers'] }}]
+      self.order=["id"{{ c_content['order'] }}]
+
+  def create(self{{ c_content['create'] }}):
+      """ Command to create one {{ obj }}  """
+      try:
+          {{ obj | lower }} = self.cm.{{ obj | lower }}_create({
+      {%- for attr in objects[obj] %}
+          {%- if attr != 'id' %}
+              "{{ attr }}": {{ attr }},
+          {%- endif %}
+      {%- endfor %}
+          })
+      except Exception as e:
+          {{ obj | lower }} = None
+          PrintException(e)
+
+
+      if {{ obj | lower }}:
+          PrintObjets(self.headers, self.order, {{ obj | lower }}.to_dict())
+      else:
+          PrintObjets(self.headers, self.order, {{ obj | lower }})
+
+  def delete(self, id):
+      """ Command to delete one {{ obj }}  """
+      try:
+          {{ obj | lower }} = self.cm.{{ obj | lower }}_delete(id)
+      except Exception as e:
+          {{ obj | lower }} = None
+          PrintException(e)
+
+      if {{ obj | lower }}:
+          PrintObjets(self.headers, self.order, {{ obj | lower }}.to_dict())
+      else:
+          PrintObjets(self.headers, self.order, {{ obj | lower }})
+
+  def update(self, id{{ c_content['create'] }}):
+      """ Command to update one {{ obj }}  """
+      payload = {
+          "id": id
+      }
+      {%- for attr in objects[obj] %}
+          {%- if attr != 'id' %}
+      if {{ attr }}:
+          payload['{{ attr }}'] = None if {{ attr }} == 'None' else {{ attr }}
+          {%- endif %}
+      {%- endfor %}
+      try:
+          {{ obj | lower }}=self.cm.{{ obj | lower }}_update(payload)
+      except Exception as e:
+          {{ obj | lower }} = None
+          PrintException(e)
+
+      if {{ obj | lower }}:
+          PrintObjets(self.headers, self.order, {{ obj | lower }}.to_dict())
+      else:
+          PrintObjets(self.headers, self.order, {{ obj | lower }})
+
+  def get(self, id):
+      """ Command to get one {{ obj }} by Id """
+      try:
+          {{ obj | lower }} = self.cm.{{ obj | lower }}_read(id)
+      except Exception as e:
+          {{ obj | lower }} = None
+          PrintException(e)
+
+      if {{ obj | lower }}:
+          PrintObjets(self.headers, self.order, {{ obj | lower }}.to_dict())
+      else:
+          PrintObjets(self.headers, self.order, {{ obj | lower }})
+
+  def list(self):
+      """ Command to get all {{ obj }}s """
+      try:
+          ret_list = self.cm.{{ obj | lower }}_list()
+      except Exception as e:
+          ret_list = None
+          PrintException(e)
+
+      if ret_list:
+          PrintObjets(self.headers, self.order, [ item.to_dict() for item in ret_list])
+      else:
+          PrintObjets(self.headers, self.order, ret_list)
+
+{%- for rpc in rpcs %}
+  {%- set rpc_meta = rpcs[rpc] %}
+  {%- if rpc_meta.available_for %}
+    {%- for a_obj in rpc_meta.available_for %}
+      {%- if obj == a_obj %}
+        {%- do rpc_meta.update({'resource_type': obj }) %}
+        {{ generate_rpc(rpc, rpc_meta) }}
+
+      {%- endif %}
+    {%- endfor %}
+  {%- endif %}
+{%- endfor %}
+
+def Display(lines, out):
+    text = "\n".join(lines) + "\n"
+    out.write(text)
+
+def main():
+  fire.core.Display = Display
+  fire.Fire({{ obj }})
+
+if __name__ == '__main__':
+  main()

@@ -1,0 +1,102 @@
+{#- BEGIN MACRO DEFINITION #}
+{%- macro generate_rpc(rpc_name, rpc) %}
+{%- set c_content = {'rpc': ''} %}
+{%- if rpc.input %}
+  {%- for i in rpc.input %}
+    {%- do c_content.update({'rpc': c_content['rpc'] + ', ' + i + '=None'}) %}
+  {%- endfor %}
+{%- endif %}
+    def {{ rpc_name }}(self, cm, ctx{{ c_content['rpc'] }}):
+        """
+        Method called {{ rpc_name }}
+        """
+        pass
+{%- endmacro %}
+{#- END MACRO DEFINITION #}
+import re
+from threading import RLock
+
+class ResourceApiGen(object):
+    _lock = RLock()
+    _implemented = {}
+    _is_hook_pattern = re.compile('^(pre|post)_[^\s]+_(create|delete|update|read)$')
+    
+    def is_implemented(self, method_name):
+        with self._lock:
+            if not self._implemented:
+                for m in self.__class__.__dict__.keys():
+                    if (self._is_hook_pattern.match(m) and
+                            getattr(self.__class__, m, None) != getattr(ResourceApiGen, m, None)):
+                        self._implemented[m] = True
+        return self._implemented.get(method_name, False)
+
+{%- for obj in objects %}
+{%- set obj_type = obj | lower %}
+
+    def pre_{{ obj_type }}_create(self, cm, ctx, mo):
+        """
+        Method called before {{ obj_type }} is created
+        """
+        pass
+    # end pre_{{ obj_type }}_create
+
+    def post_{{ obj_type }}_create(self, cm, ctx, mo):
+        """
+        Method called after {{ obj_type }} is created
+        """
+        pass
+    # end post_{{ obj_type }}_create
+
+    def pre_{{ obj_type }}_read(self, cm, ctx, id):
+        """
+        Method called before {{ obj_type }} is read
+        """
+        pass
+    # end pre_{{ obj_type }}_read
+
+    def post_{{ obj_type }}_read(self, cm, ctx, id, mo):
+        """
+        Method called after {{ obj_type }} is read
+        """
+        pass
+    # end post_{{ obj_type }}_read
+
+    def pre_{{ obj_type }}_update(self, cm, ctx, mo):
+        """
+        Method called before {{ obj_type }} is updated
+        """
+        pass
+    # end pre_{{ obj_type }}_update
+
+    def post_{{ obj_type }}_update(self, cm, ctx, mo):
+        """
+        Method called after {{ obj_type }} is updated
+        """
+        pass
+    # end post_{{ obj_type }}_update
+
+    def pre_{{ obj_type }}_delete(self, cm, ctx, id):
+        """
+        Method called before {{ obj_type }} is deleted
+        """
+        pass
+    # end pre_{{ obj_type }}_delete
+
+    def post_{{ obj_type }}_delete(self, cm, ctx, id, mo):
+        """
+        Method called after {{ obj_type }} is deleted
+        """
+        pass
+    # end post_{{ obj_type }}_delete
+
+{%- endfor %}
+{# Start to generate rpc #}
+{%- for rpc in rpcs %}
+  {%- set rpc_meta = rpcs[rpc] %}
+  {%- if rpc_meta.available_for %}
+    {%- for obj in rpc_meta.available_for %}
+    {{ generate_rpc( obj|lower + '_' + rpc, rpc_meta) }}
+
+    {%- endfor %}
+  {%- endif %}
+{%- endfor %}

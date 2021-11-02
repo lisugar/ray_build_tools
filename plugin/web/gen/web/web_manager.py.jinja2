@@ -1,0 +1,190 @@
+import functools
+import traceback
+from ray_{{ namespace }}.gen.mo.resource_object import all_resource_types
+from ray_{{ namespace }}.gen.mo.resource_object import all_rpc_types
+from ray_{{ namespace }}.gen.conf_manager import ConfigManager
+
+class WebManager(object):
+
+    def __new__(cls, *args, **kwargs):
+        obj = super(WebManager, cls).__new__(cls)
+        cls._generate_resource_crud_methods(obj)
+        cls._generate_rpc_methods(obj)
+
+        return obj
+
+    def __init__(self, server):
+        self.server = server
+        self.cm = ConfigManager()
+
+    def get_service_name(self):
+        return "{{ namespace }}"
+
+    def get_service_path(self):
+        return "/{{ namespace }}"
+
+    def get_home_page(self):
+        json_links = []
+        for resource_type in all_resource_types:
+            obj_type = resource_type.replace('-', '_').lower()
+            json_links.append({
+                "uri": "{}/{}".format(self.get_service_path(), obj_type),
+                "type": "resource"
+            })
+
+        for rpc_type in all_rpc_types:
+            json_links.append({
+                "uri": "{}/{}".format(self.get_service_path(), rpc_type),
+                "type": "rpc"
+            })
+        return {"uri": "{}".format(self.get_service_path()), "links": json_links}
+
+    @classmethod
+    def _generate_resource_crud_methods(cls, obj):
+        for resource_type in all_resource_types:
+            obj_type = resource_type.replace('-', '_').lower()
+
+            create_method = functools.partial(obj.resource_create, resource_type)
+            functools.update_wrapper(create_method, obj.resource_create)
+            setattr(obj, '%s_create' %(obj_type), create_method)
+
+            read_method = functools.partial(obj.resource_read,resource_type)
+            functools.update_wrapper(read_method, obj.resource_read)
+            setattr(obj, '%s_read' %(obj_type), read_method)
+
+            update_method = functools.partial(obj.resource_update, resource_type)
+            functools.update_wrapper(update_method, obj.resource_update)
+            setattr(obj, '%s_update' %(obj_type), update_method)
+
+            delete_method = functools.partial(obj.resource_delete, resource_type)
+            functools.update_wrapper(delete_method, obj.resource_delete)
+            setattr(obj, '%s_delete' %(obj_type), delete_method)
+
+            list_method = functools.partial(obj.resource_list, resource_type)
+            functools.update_wrapper(list_method, obj.resource_list)
+            setattr(obj, '%s_list' %(obj_type), list_method)
+
+    @classmethod
+    def _generate_rpc_methods(cls, obj):
+        for rpc_type in all_rpc_types:
+            rpc_method = functools.partial(obj.rpc_execute, rpc_type)
+            functools.update_wrapper(rpc_method, obj.rpc_execute)
+            setattr(obj, rpc_type, rpc_method)
+
+    def resource_list(self, resource_type):
+        obj_type = resource_type.replace('-', '_').lower()
+        try:
+            obj_list = getattr(self.cm, "{}_list".format(obj_type))()
+            return {
+                obj_type: [ item.to_dict() for item in obj_list],
+                "total": len(obj_list)
+            }
+        except:
+            return {
+                obj_type: [],
+                "total": 0
+            }
+
+    def resource_read(self, resource_type, id):
+        obj_type = resource_type.replace('-', '_').lower()
+        try:
+            obj = getattr(self.cm, "{}_read".format(obj_type))(id)
+            return {
+                obj_type: obj.to_dict()
+            }
+        except:
+            return {
+                obj_type: None
+            }
+
+    def resource_create(self, resource_type):
+        obj_type = resource_type.replace('-', '_').lower()
+        try:
+            req = self.server.get_request()
+            input_payload = req.json.get(obj_type)
+            obj = getattr(self.cm, "{}_create".format(obj_type))(input_payload)
+            return {
+                obj_type: obj.to_dict()
+            }
+        except:
+            traceback.print_exc()
+            return {
+                obj_type: None
+            }
+
+    def resource_update(self, resource_type, id):
+        obj_type = resource_type.replace('-', '_').lower()
+        try:
+            req = self.server.get_request()
+            input_payload = req.json.get(obj_type)
+            input_payload['id'] = id
+            obj = getattr(self.cm, "{}_update".format(obj_type))(input_payload)
+            return {
+                obj_type: obj.to_dict()
+            }
+        except:
+            traceback.print_exc()
+            return {
+                obj_type: None
+            }
+
+    def resource_delete(self, resource_type, id):
+        obj_type = resource_type.replace('-', '_').lower()
+        try:
+            obj = getattr(self.cm, "{}_delete".format(obj_type))(id)
+            return {
+                obj_type: obj.to_dict()
+            }
+        except:
+            return {
+                obj_type: None
+            }
+
+    def rpc_execute(self, rpc_name):
+        try:
+            req = self.server.get_request()
+            input_payload = req.json or {}
+            obj = getattr(self.cm, rpc_name)(**input_payload)
+            return {
+                "status": "SUCCESS",
+                "result": obj
+            }
+        except:
+            return {
+                "status": "FAILED",
+                "error": traceback.format_exc(),
+            }
+
+    def register_uri(self):
+        if self.server:
+            #register homepage firstly
+            self.server.route(self.get_service_path(), 'GET', self.get_home_page)
+
+            #register each of the resources
+            for resource_type in all_resource_types:
+                obj_type = resource_type.replace('-', '_').lower()
+                #for list
+                resource_path = self.get_service_path() + '/' + obj_type
+                self.server.route(resource_path, 'GET', getattr(self, '%s_list' %(obj_type)))
+                #query by id
+                resource_path = self.get_service_path() + '/' + obj_type + '/<id>'
+                self.server.route(resource_path, 'GET', getattr(self, '%s_read' %(obj_type)))
+                #post as create
+                resource_path = self.get_service_path() + '/' + obj_type
+                self.server.route(resource_path, 'POST', getattr(self, '%s_create' %(obj_type)))
+                #put as update
+                resource_path = self.get_service_path() + '/' + obj_type + '/<id>'
+                self.server.route(resource_path, 'PUT', getattr(self, '%s_update' %(obj_type)))
+                #delete as update
+                resource_path = self.get_service_path() + '/' + obj_type + '/<id>'
+                self.server.route(resource_path, 'DELETE', getattr(self, '%s_delete' %(obj_type)))
+
+            #register each of the rps
+            for rpc_type in all_rpc_types:
+                #always POST for rpc
+                resource_path = self.get_service_path() + '/' + rpc_type
+                self.server.route(resource_path, 'POST', getattr(self, rpc_type))
+
+
+
+

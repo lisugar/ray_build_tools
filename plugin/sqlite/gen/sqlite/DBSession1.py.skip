@@ -1,0 +1,249 @@
+#coding=utf-8
+from sqlalchemy import Column, String, create_engine, Integer, Text, BigInteger,Numeric,text , Boolean
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import ForeignKey
+from sqlalchemy.sql.sqltypes import BOOLEAN
+Base = declarative_base()
+
+class Port(Base):
+    __tablename__ = 'port'
+    id = Column(Integer
+                , primary_key=True
+                )
+    idx = Column(Integer)
+    mac = Column(String)
+    logicname = Column(String)
+    physicalname = Column(String)
+    bridge = Column(String)
+    channel = Column(String)
+    speed = Column(String)
+    admin_status = Column(Integer)
+    link_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    comment = Column(String)
+    
+class Bridge(Base):
+    __tablename__ = 'bridge'
+    id = Column(Integer, primary_key=True)
+    idx = Column(Integer)
+    mac = Column(String)
+    logicname = Column(String)
+    physicalname = Column(String)
+    admin_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    mode = Column(Integer)
+    stp = Column(Integer)
+    port_cnt = Column(Integer)
+    ip_cnt = Column(Integer)
+    comment = Column(String)
+    
+class Bridgeip(Base):
+    __tablename__ = 'bridgeip'
+    id = Column(Integer, primary_key=True)
+    logicname = Column(String)
+    ip = Column(String)
+    ismngtip = Column(String)
+    
+class Dns(Base):
+    __tablename__ = 'dns'
+    id = Column(Integer, primary_key=True)
+    dns1 = Column(String)
+    dns2 = Column(String)
+    comment = Column(String)
+    
+    
+class Channel(Base):
+    __tablename__ = 'channel'
+    id = Column(Integer, primary_key=True)
+    idx = Column(Integer)
+    mac = Column(String)
+    logicname = Column(String)
+    physicalname = Column(String)
+    bridge = Column(String)
+    speed = Column(String)
+    admin_status = Column(Integer)
+    link_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    comment = Column(String)
+    
+class Trunk(Base):
+    __tablename__ = 'trunk'
+    id = Column(Integer, primary_key=True)
+    idx = Column(Integer)
+    mac = Column(String)
+    flag = Column(Integer)
+    logicname = Column(String)
+    physicalname = Column(String)
+    admin_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    mode = Column(Integer)
+    stp = Column(Integer)
+    port_cnt = Column(Integer)
+    ip_cnt = Column(Integer)
+    comment = Column(String)
+    
+class Trunkip(Base):
+    __tablename__ = 'trunkip'
+    id = Column(Integer, primary_key=True)
+    logicname = Column(String)
+    ip = Column(String)
+    ismngtip = Column(String)
+    
+    
+    
+class Route(Base):
+    __tablename__ = 'route'
+    id = Column(Integer, primary_key = True)
+    ip = Column(String())
+    metric = Column(Integer())
+    gateway = Column(String())
+    ifname = Column(String())
+
+class VppRoute(Base):
+    __tablename__ = 'vpproute'
+    id = Column(Integer, primary_key = True)
+    ip = Column(String())
+    weight = Column(Integer())
+    gateway = Column(String())
+    ifname = Column(String())
+
+class Route_ipv6(Base):
+    __tablename__ = 'route_ipv6'
+    id = Column(Integer, primary_key = True)
+    ip = Column(String())
+    ifname = Column(String())
+    gateway = Column(String())
+    metric = Column(Integer)
+    
+class Proute(Base):
+    __tablename__ = 'proute'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    idx = Column(Integer)
+    sip = Column(String)
+    dip = Column(String)
+    gip = Column(String)
+    ifname = Column(String)
+    version = Column(Integer)
+
+class VppAcl(Base):
+    __tablename__ = 'vppacl'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    vpp_internal_id = Column(Integer)
+    permited = Column(BOOLEAN)
+    proto = Column(Integer)
+    sip = Column(String)
+    sport_from = Column(Integer)
+    sport_to = Column(Integer)
+    dip = Column(String)
+    dport_from = Column(Integer)
+    dport_to = Column(Integer)
+
+class VppProute(Base):
+    __tablename__ = 'vppproute'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    acl_ref_id = Column(Integer)
+    policy_id = Column(Integer)
+    bindingto = Column(String)
+    gateway = Column(String)
+    ifname = Column(String)
+
+
+
+class Arp(Base):
+    __tablename__ = 'arp'
+    id = Column(Integer, primary_key = True)
+    ip = Column(String)
+    mac = Column(String)
+    is_static = Column(Integer)
+    logic_name = Column(String)
+    res = Column(String())
+
+class Remote(Base):
+    __tablename__ = 'remote'
+    id = Column(Integer, primary_key = True)
+    ip = Column(String())
+    ssh = Column(Boolean())
+    ping = Column(Boolean())
+    web = Column(Boolean())
+    #webshell=Column(Boolean())
+
+
+class Plink(Base):
+    __tablename__ = 'plink'
+    id           = Column(Integer, primary_key=True)
+    name         = Column(String)
+    switch       = Column(Integer)
+    uplink       = Column(String)
+    uplinktype   = Column(String)
+    downlink     = Column(String)
+    downlinktype = Column(String)
+    
+class VppBridge(Base):
+    __tablename__ = 'vppbridge'
+    id = Column(Integer, primary_key=True)
+    idx = Column(Integer)
+    mac = Column(String)
+    logicname = Column(String)
+    physicalname = Column(String)
+    admin_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    mode = Column(Integer)
+    stp = Column(Integer)
+    port_cnt = Column(Integer)
+    ip_cnt = Column(Integer)
+    comment = Column(String)
+    bridgetype = Column(String)
+
+class VppPort(Base):
+    __tablename__ = 'vppport'
+    id = Column(Integer, primary_key=True)
+    idx = Column(Integer)
+    pci = Column(String)
+    mac = Column(String)
+    logicname = Column(String)
+    physicalname = Column(String)
+    bridge = Column(String)
+    channel = Column(String)
+    speed = Column(String)
+    admin_status = Column(Integer)
+    link_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    comment = Column(String)
+    porttype = Column(String)
+    
+
+class VppChannel(Base):
+    __tablename__ = 'vppchannel'
+    id = Column(Integer, primary_key=True)
+    idx = Column(Integer)
+    mac = Column(String)
+    logicname = Column(String)
+    physicalname = Column(String)
+    bridge = Column(String)
+    speed = Column(String)
+    admin_status = Column(Integer)
+    link_status = Column(Integer)
+    mtu = Column(Integer)
+    ref_cnt = Column(Integer)
+    comment = Column(String)
+    channeltype = Column(String)
+
+    
+engine = create_engine('sqlite:////rayos/cfg/network.db')
+DB = sessionmaker(bind=engine) 
+session = DB()
+Base.metadata.create_all(engine)
+'''
+data = session.query(Port).all()
+if data:
+    for item in data:
+        print item.physicalname
+session.close()
+'''

@@ -1,0 +1,128 @@
+all_resource_types = set([
+{%- for obj in objects %}
+    '{{ obj }}',
+{%- endfor %}
+])
+
+all_rpc_types = {
+{%- for rpc in rpcs %}
+  {%- set rpc_meta = rpcs[rpc] %}
+  {%- if rpc_meta.available_for %}
+    {%- for obj in rpc_meta.available_for %}
+    {%- do rpc_meta.update({'resource_type': obj }) %}
+    "{{ obj|lower + '_' + rpc }}": {{ rpc_meta }},
+    {%- endfor %}
+  {%- endif %}
+{%- endfor %}
+}
+
+try:
+    import simplejson as json
+except ImportError:
+    import json
+
+def obj_serializer_all(obj):
+    if hasattr(obj, 'serialize_to_json'):
+        return obj.serialize_to_json()
+    else:
+        return dict((k, v) for k, v in obj.__dict__.iteritems())
+
+def obj_to_json(obj, default=obj_serializer_all):
+    return json.dumps(obj, default=default)
+
+def obj_to_dict(obj, default=obj_serializer_all):
+    return json.loads(obj_to_json(obj, default=default))
+
+
+{%- for obj in objects %}
+  {%- set obj_type = obj | lower %}
+  {%- set c_content = {} %}
+  {%- do c_content.update({'init_str': '' }) %}
+  {%- for attr in objects[obj] %}
+    {%- do c_content.update({'init_str': c_content.get('init_str') + ', ' + attr + ' = None' }) %}
+  {%- endfor %}
+class {{ obj }}(object):
+
+    def __init__(self{{ c_content.get('init_str') }}, *args, **kwargs):
+
+        {%- for attr in objects[obj] %}
+        if {{ attr }} is not None:
+            self._{{ attr }} = {{ attr }}
+        {%- endfor %}
+
+    {%- for attr in objects[obj] %}
+    {%- set attr_detail = objects[obj][attr] %}
+    @property
+    def {{ attr }}(self):
+        """Get {{ attr }} for {{ obj_type}}.
+
+        :returns: {{ attr_detail['type'] }} object
+
+        """
+        return getattr(self, '_{{ attr }}', None)
+    #end {{ attr }}
+
+    @{{ attr }}.setter
+    def {{ attr }}(self, {{ attr }}):
+        """Set {{ attr }} for {{ obj_type }}.
+
+        :param {{ attr }}: {{ attr_detail['type'] }} object
+
+        """
+        self._{{ attr }} = {{ attr }}
+    #end {{ attr }}
+
+    def set_{{ attr }}(self, value):
+        self.{{ attr }} = value
+
+    def get_{{ attr }}(self):
+        return self.{{ attr }}
+    #end get_{{ attr }}
+
+    {%- endfor %}
+
+    def _serialize_field_to_json(self, serialized, fields_to_serialize, field_name):
+        if fields_to_serialize is None: # all fields are serialized
+            serialized[field_name] = getattr(self, field_name)
+        elif field_name in fields_to_serialize:
+            serialized[field_name] = getattr(self, field_name)
+    #end _serialize_field_to_json
+
+    def serialize_to_json(self, field_names = None):
+        serialized = {}
+
+        # serialize property fields
+        {%- for attr in objects[obj] %}
+        if hasattr(self, '_{{ attr }}'):
+            self._serialize_field_to_json(serialized, field_names, '{{ attr }}')
+        {%- endfor %}
+
+        return serialized
+    #end serialize_to_json
+
+    def dump(self): # pragma: no cover
+        """Display {{ obj }} object in compact form."""
+        {%- for attr in objects[obj] %}
+        print('P {{ attr }} = ', self.get_{{ attr }}())
+        {%- endfor %}
+
+    #end dump
+
+    def to_dict(self):
+        return obj_to_dict(self)
+    #end to_dict
+
+    @classmethod
+    def from_dict(cls, **kwargs):
+        props_dict = {}
+        {%- for attr in objects[obj] %}
+        if '{{ attr }}' in kwargs:
+            props_dict['{{ attr }}'] = kwargs['{{ attr }}']
+        {%- endfor %}
+
+        obj = {{ obj }}(**props_dict)
+        return obj
+    #end from_dict
+
+
+{%- endfor %}

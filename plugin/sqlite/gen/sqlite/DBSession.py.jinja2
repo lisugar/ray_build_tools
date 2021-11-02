@@ -1,0 +1,82 @@
+#coding=utf-8
+import json
+from sqlalchemy import Column, String, create_engine, Integer, Text, BigInteger,Numeric,text , Boolean
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import ForeignKey
+from sqlalchemy.sql.sqltypes import BOOLEAN
+Base = declarative_base()
+
+all_resource_types = set([
+{%- for obj in objects %}
+    '{{ obj }}',
+{%- endfor %}
+])
+
+def obj_serializer_all(obj):
+    if hasattr(obj, 'serialize_to_json'):
+        return obj.serialize_to_json()
+    else:
+        return dict((k, v) for k, v in obj.__dict__.iteritems())
+
+def obj_to_json(obj, default=obj_serializer_all):
+    return json.dumps(obj, default=default)
+
+def obj_to_dict(obj, default=obj_serializer_all):
+    return json.loads(obj_to_json(obj, default=default))
+
+{%- for obj in objects %}
+
+class {{ obj }}(Base):
+    __tablename__ = '{{ obj | lower }}'
+    {%- for attr in objects[obj] %}
+      {%- set attr_detail = objects[obj][attr] %}
+      {%- set c_content = {} %}
+      {%- do c_content.update({'content': attr_detail['type'] }) %}
+      {%- if 'key' in attr_detail %}
+        {%- do c_content.update({'content': c_content['content'] + ', primary_key=True, autoincrement=True'}) %}
+      {%- endif %}
+    {{ attr }} = Column({{ c_content['content'] }})
+    {%- endfor %}
+
+    @classmethod
+    def from_dict(cls, **kwargs):
+        props_dict = {}
+        {%- for attr in objects[obj] %}
+        if '{{ attr }}' in kwargs:
+            props_dict['{{ attr }}'] = kwargs['{{ attr }}']
+        {%- endfor %}
+
+        obj = {{ obj }}(**props_dict)
+        return obj
+    #end from_dict
+
+    def to_dict(self):
+        return obj_to_dict(self)
+    #end to_dict
+
+    def _serialize_field_to_json(self, serialized, fields_to_serialize, field_name):
+        if fields_to_serialize is None: # all fields are serialized
+            serialized[field_name] = getattr(self, field_name)
+        elif field_name in fields_to_serialize:
+            serialized[field_name] = getattr(self, field_name)
+    #end _serialize_field_to_json
+
+    def serialize_to_json(self, field_names = None):
+        serialized = {}
+
+        # serialize property fields
+        {%- for attr in objects[obj] %}
+        if hasattr(self, '{{ attr }}'):
+            self._serialize_field_to_json(serialized, field_names, '{{ attr }}')
+        {%- endfor %}
+
+        return serialized
+    #end serialize_to_json
+
+{%- endfor %}
+
+engine = create_engine('sqlite:////Users/simonli/dev/db/{{ namespace }}.db')
+DB = sessionmaker(bind=engine) 
+session = DB()
+Base.metadata.create_all(engine)
